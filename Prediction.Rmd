@@ -1,0 +1,93 @@
+---
+title: "Prediction"
+author: "samado"
+date: "December 8, 2018"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+# Data
+
+The training data for this project are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv
+
+The test data are available here: 
+https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv
+
+```{r cache=TRUE}
+library(RCurl)
+train_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-training.csv"
+test_url <- "https://d396qusza40orc.cloudfront.net/predmachlearn/pml-testing.csv"
+train_data <- read.csv(text=getURL(train_url), na.strings=c("", "NA"))
+test_data <- read.csv(text=getURL(test_url), na.strings=c("", "NA"))
+```
+
+The first column of the data is just index. We remove it from training data
+frame.
+```{r}
+train_data$X <- NULL
+```
+
+Similarly the user and time information should not have any effect on
+whether barbell lifts are performed correctly or not.
+
+```{r}
+cols_to_remove <- c("user_name", "raw_timestamp_part_1",
+                    "raw_timestamp_part_2", "cvtd_timestamp")
+for (col in cols_to_remove) {
+    train_data[, col] <- NULL
+}
+```
+
+Many columns in the dataset have mostly missing values. We remove
+features from the training and testing data that have too many missing
+values, where imputing is not an option.
+
+```{r}
+NAs <- apply(train_data,2,function(x) {sum(is.na(x))})
+train_data <- train_data[,which(NAs == 0)]
+```
+
+We also remove features that
+don't have many missing values but have one unique value (i.e. zero
+variance predictors) or have few unique values relative to the number
+of samples and the ratio of frequency of the most common value to the
+frequency of second most common value is large.
+
+```{r message=FALSE}
+library(caret)
+nsv <- nearZeroVar(train_data)
+train_data <- train_data[-nsv]
+test_data <- test_data[-nsv]
+```
+
+The final set of predictors used for classification are as follows.
+
+```{r}
+names(train_data)
+```
+
+# The model
+
+We build a random forest classifier to predict the action class. To measure
+the accuracy of the model, we do 10-fold cross validation with 80:20 split, on
+each fold, 80% of the data is used for training the random forest and remaining
+20% is used for testing.
+
+```{r cache=TRUE}
+library(randomForest)
+set.seed(1)
+obs <- c()
+preds <- c()
+for(i in 1:10) {
+    intrain = sample(1:dim(train_data)[1], size=dim(train_data)[1] * 0.8, replace=F)
+    train_cross = train_data[intrain,]
+    test_cross = train_data[-intrain,]
+    rf <- randomForest(classe ~ ., data=train_cross)
+    obs <- c(obs, test_cross$classe)
+    preds <- c(preds, predict(rf, test_cross))
+}
+```
+
